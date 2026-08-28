@@ -1,0 +1,20 @@
+{
+  "name": "vortex-hider",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Profile-specific mod hiding for Vortex",
+  "license": "GPL-3.0-only",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "redux-act": "^1.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.9.0",
+    "vortex-api": "github:Nexus-Mods/vortex-api"
+  }
+}
