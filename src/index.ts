@@ -688,6 +688,8 @@ function showHiddenMods(
     return;
   }
 
+  clearModsSelection();
+
   showingHidden = true;
   removeRowCSS();
 
@@ -718,6 +720,8 @@ function showHiddenMods(
 function hideHiddenMods(
   api: types.IExtensionApi,
 ): void {
+  clearModsSelection();
+
   showingHidden = false;
 
   suppressFilterWatch = true;
@@ -1060,6 +1064,75 @@ function idsFromAction(
   return [instanceIds];
 }
 
+function selectedModsRowIds(): string[] {
+  return Array.from(
+    document.querySelectorAll(
+      "#table-mods tr.table-selected[data-rowid]",
+    ),
+  )
+    .map((row) =>
+      normalizeId(
+        row.getAttribute("data-rowid"),
+      ),
+    )
+    .filter(
+      (rowId): rowId is string =>
+        rowId !== undefined,
+    );
+}
+
+function clearModsSelection(): void {
+  const selectedRows = Array.from(
+    document.querySelectorAll<HTMLTableRowElement>(
+      "#table-mods tr.table-selected[data-rowid]",
+    ),
+  );
+
+  selectedRows.forEach((row) => {
+    row.dispatchEvent(
+      new MouseEvent(
+        "click",
+        {
+          bubbles: true,
+          cancelable: true,
+          ctrlKey: true,
+        },
+      ),
+    );
+  });
+}
+
+function actionIds(
+  instanceIds?: string | string[],
+): string[] {
+  const supplied = idsFromAction(instanceIds);
+
+  /*
+   * Vortex's row context menu supplies only the row that was
+   * right-clicked, even when several rows are selected.
+   *
+   * If that row belongs to the current selection, treat the action
+   * as applying to the complete selection.
+   *
+   * If the user right-clicked an unselected row, operate only on
+   * that row.
+   */
+  if (supplied.length !== 1) {
+    return supplied;
+  }
+
+  const selected = selectedModsRowIds();
+
+  if (
+    selected.length > 1 &&
+    selected.includes(supplied[0])
+  ) {
+    return selected;
+  }
+
+  return supplied;
+}
+
 function installedModForRowId(
   state: any,
   gameId: string,
@@ -1389,6 +1462,8 @@ function canHide(
     return false;
   }
 
+  let hasUnhidden = false;
+
   for (const rowId of rowIds) {
     const row = rowForActionId(
       state,
@@ -1401,16 +1476,6 @@ function canHide(
     }
 
     if (
-      hiddenIdentityForRow(
-        state,
-        profileId,
-        row,
-      ) !== undefined
-    ) {
-      return false;
-    }
-
-    if (
       row.state !== "downloaded" &&
       installedModEnabled(
         profile,
@@ -1419,9 +1484,19 @@ function canHide(
     ) {
       return "Enabled mods cannot be hidden for a profile.";
     }
+
+    if (
+      hiddenIdentityForRow(
+        state,
+        profileId,
+        row,
+      ) === undefined
+    ) {
+      hasUnhidden = true;
+    }
   }
 
-  return true;
+  return hasUnhidden;
 }
 
 function canUnhide(
@@ -1612,13 +1687,13 @@ function init(
     (instanceIds?: string[]) => {
       hideForProfile(
         context.api,
-        idsFromAction(instanceIds),
+        actionIds(instanceIds),
       );
     },
     (instanceIds?: string[]) =>
       canHide(
         context.api,
-        instanceIds ?? [],
+        actionIds(instanceIds),
       ),
   );
 
@@ -1631,13 +1706,13 @@ function init(
     (instanceIds?: string[]) => {
       unhideForProfile(
         context.api,
-        idsFromAction(instanceIds),
+        actionIds(instanceIds),
       );
     },
     (instanceIds?: string[]) =>
       canUnhide(
         context.api,
-        instanceIds ?? [],
+        actionIds(instanceIds),
       ),
   );
 
