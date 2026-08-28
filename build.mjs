@@ -33,4 +33,4 @@ await copyFile(
   "dist/info.json",
 );
 
-console.log("Built Profile Mod Hider into ./dist");
+console.log("Built Hider into ./dist");
