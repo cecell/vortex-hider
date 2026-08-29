@@ -182,6 +182,10 @@ const reducer = reducerImpl as unknown as types.IReducerSpec;
 let showingHidden = false;
 let suppressFilterWatch = false;
 let refreshHiderRows: (() => void) | undefined;
+let cleaningHiddenSelection = false;
+
+let hiddenSelectionCleanupTimer:
+  ReturnType<typeof setTimeout> | undefined;
 
 /*
  * ---------------------------------------------------------------------------
@@ -1066,10 +1070,17 @@ function idsFromAction(
 
 function selectedModsRowIds(): string[] {
   return Array.from(
-    document.querySelectorAll(
+    document.querySelectorAll<HTMLTableRowElement>(
       "#table-mods tr.table-selected[data-rowid]",
     ),
   )
+    .filter(
+      (row) =>
+        showingHidden ||
+        !row.classList.contains(
+          HIDDEN_ROW_CLASS,
+        ),
+    )
     .map((row) =>
       normalizeId(
         row.getAttribute("data-rowid"),
@@ -1100,6 +1111,77 @@ function clearModsSelection(): void {
       ),
     );
   });
+}
+
+function sanitizeHiddenSelection(
+  api: types.IExtensionApi,
+): void {
+  hiddenSelectionCleanupTimer = undefined;
+
+  if (
+    cleaningHiddenSelection ||
+    showingHidden ||
+    !hiderEnabled(api.getState())
+  ) {
+    return;
+  }
+
+  const hiddenSelectedRows = Array.from(
+    document.querySelectorAll<HTMLTableRowElement>(
+      `#table-mods tr.${HIDDEN_ROW_CLASS}.table-selected[data-rowid]`,
+    ),
+  );
+
+  if (hiddenSelectedRows.length === 0) {
+    return;
+  }
+
+  cleaningHiddenSelection = true;
+
+  try {
+    /*
+     * Vortex implements Ctrl+click as:
+     * toggle this row while preserving the rest of the selection.
+     *
+     * Use that same path to remove hidden rows from Vortex's
+     * actual internal selection state.
+     */
+    hiddenSelectedRows.forEach((row) => {
+      row.dispatchEvent(
+        new MouseEvent(
+          "click",
+          {
+            bubbles: true,
+            cancelable: true,
+            ctrlKey: true,
+          },
+        ),
+      );
+    });
+  } finally {
+    cleaningHiddenSelection = false;
+  }
+}
+
+function scheduleHiddenSelectionCleanup(
+  api: types.IExtensionApi,
+): void {
+  if (
+    cleaningHiddenSelection ||
+    hiddenSelectionCleanupTimer !== undefined
+  ) {
+    return;
+  }
+
+  /*
+   * Let Vortex finish its own click/key selection update first.
+   */
+  hiddenSelectionCleanupTimer = setTimeout(
+    () => {
+      sanitizeHiddenSelection(api);
+    },
+    0,
+  );
 }
 
 function actionIds(
@@ -1785,6 +1867,34 @@ function init(
   );
 
   context.once(() => {
+    
+    const onModsSelectionInput = (
+      event: Event,
+    ): void => {
+      const target = event.target as Element | null;
+
+      if (
+        !(target instanceof Element) ||
+        target.closest("#table-mods") === null
+      ) {
+        return;
+      }
+
+      scheduleHiddenSelectionCleanup(
+        context.api,
+      );
+    };
+
+    document.addEventListener(
+      "click",
+      onModsSelectionInput,
+    );
+
+    document.addEventListener(
+      "keydown",
+      onModsSelectionInput,
+    );
+    
     installStructuralCSS();
 
     /*
